@@ -1,13 +1,13 @@
 set(controller_SRC
-  NewFSMController.cpp
+  UserPreferenceController.cpp
 )
 
 set(controller_HDR
-  NewFSMController.h
+  UserPreferenceController.h
 )
 
 add_library(${PROJECT_NAME} SHARED ${controller_SRC} ${controller_HDR})
-set_target_properties(${PROJECT_NAME} PROPERTIES COMPILE_FLAGS "-DNewFSMController_EXPORTS")
+set_target_properties(${PROJECT_NAME} PROPERTIES COMPILE_FLAGS "-DUserPreferenceController_EXPORTS")
 target_link_libraries(${PROJECT_NAME} PUBLIC mc_rtc::mc_control_fsm)
 install(TARGETS ${PROJECT_NAME}
   ARCHIVE DESTINATION "${MC_RTC_LIBDIR}"

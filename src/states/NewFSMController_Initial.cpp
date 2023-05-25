@@ -1,24 +1,24 @@
-#include "NewFSMController_Initial.h"
+#include "UserPreferenceController_Initial.h"
 
-#include "../NewFSMController.h"
+#include "../UserPreferenceController.h"
 
-void NewFSMController_Initial::configure(const mc_rtc::Configuration & config) {}
+void UserPreferenceController_Initial::configure(const mc_rtc::Configuration & config) {}
 
-void NewFSMController_Initial::start(mc_control::fsm::Controller & ctl_)
+void UserPreferenceController_Initial::start(mc_control::fsm::Controller & ctl_)
 {
-  auto & ctl = static_cast<NewFSMController &>(ctl_);
+  auto & ctl = static_cast<UserPreferenceController &>(ctl_);
 }
 
-bool NewFSMController_Initial::run(mc_control::fsm::Controller & ctl_)
+bool UserPreferenceController_Initial::run(mc_control::fsm::Controller & ctl_)
 {
-  auto & ctl = static_cast<NewFSMController &>(ctl_);
+  auto & ctl = static_cast<UserPreferenceController &>(ctl_);
   output("OK");
   return true;
 }
 
-void NewFSMController_Initial::teardown(mc_control::fsm::Controller & ctl_)
+void UserPreferenceController_Initial::teardown(mc_control::fsm::Controller & ctl_)
 {
-  auto & ctl = static_cast<NewFSMController &>(ctl_);
+  auto & ctl = static_cast<UserPreferenceController &>(ctl_);
 }
 
-EXPORT_SINGLE_STATE("NewFSMController_Initial", NewFSMController_Initial)
+EXPORT_SINGLE_STATE("UserPreferenceController_Initial", UserPreferenceController_Initial)
