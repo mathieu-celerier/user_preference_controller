@@ -1,3 +1,4 @@
 add_fsm_state_simple(UserPreferenceController_Initial)
+add_fsm_state_simple(UserPreferenceController_Switch)
 
 add_fsm_data_directory(data)

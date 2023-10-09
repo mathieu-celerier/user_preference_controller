@@ -1,9 +1,11 @@
 set(controller_SRC
   UserPreferenceController.cpp
+  MinimumJerk.cpp
 )
 
 set(controller_HDR
   UserPreferenceController.h
+  MinimumJerk.h
 )
 
 add_library(${PROJECT_NAME} SHARED ${controller_SRC} ${controller_HDR})

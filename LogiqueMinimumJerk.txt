@@ -1,0 +1,11 @@
+Si a < 0
+  -> return
+Sinon
+  Si V >= Vlimit
+    -> résoudre t tel que a = 0
+    -> Plutot on met a = 0
+  Sinon
+    Si Vmax < Vlimit
+      -> return
+    Sinon
+      -> résoudre t tel que Vmax = Vlimit
