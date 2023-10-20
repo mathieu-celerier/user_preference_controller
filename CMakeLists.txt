@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.5)
 
 set(CXX_DISABLE_WERROR 1)
 set(CMAKE_CXX_STANDARD 11)
@@ -14,6 +14,8 @@ enable_testing()
 if(NOT TARGET mc_rtc::mc_control)
   find_package(mc_rtc REQUIRED)
 endif()
+
+include_directories(include)
 
 add_subdirectory(src)
 

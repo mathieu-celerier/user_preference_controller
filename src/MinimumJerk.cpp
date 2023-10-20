@@ -1,234 +1,165 @@
 #include "./MinimumJerk.h"
 
-MinimumJerk::MinimumJerk(double dt_, double mass_) : dt(dt_), mass(mass_), acc_lim(1)
+MinimumJerk::MinimumJerk(double dt_, double mass_)
+: dt(dt_), Rs(Matrix36d::Zero()), Rn(Matrix63d::Zero()), u(Matrix63d::Zero())
 {
-  Ri << -60., -36., -9., 60., -24., 3., 360., 192., 36., -360., 168., -24., -720., -360., -60., 720., -360., 60.;
-  // Ri << 0., 1., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., -60., -36., -9., 60., -24., 3.;
+  Ri << -6., -3., -0.5, 6., -3., 0.5, 15., 8., 1.5, -15., 7., -1., -10., -6., -1.5, 10., -4., 0.5, 0., 0., 0.5, 0., 0.,
+      0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0.;
 
-  Ri_d << -6., -3., -0.5, 6., -3., 0.5, 15., 8., 1.5, -15., 7., -1., -10., -6., -1.5, 10., -4., 0.5, 0., 0., 0.5, 0.,
-      0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0.;
+  Ris << 0., 1., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., -60., -36., -9., 60., -24., 3.;
 
-  vel_limit = 2.;
+  Rn(0, 0) = 1;
 
-  Rs.setZero();
-  RdeltaT.setZero();
-  RdeltaT_d.setZero();
-  initConditions.setZero();
-  X_0.setZero();
-
-  mc_rtc::log::info("Initialize Minimum-Jerk tracjectory generator with dt {}[s] for body of mass {}[kg]", dt, mass);
+  mc_rtc::log::info("Initialize Minimum-Jerk trajectory generator with dt {}[s] for body of mass {}[kg]", dt_, mass_);
 }
 
-Eigen::Vector3d MinimumJerk::eval(void)
+Vector3d MinimumJerk::getTargetAcceleration(void)
+{
+  return target_acc;
+}
+
+Vector3d MinimumJerk::eval(void)
 {
   return err;
 }
 
-void MinimumJerk::set_target(Eigen::Vector3d target, double duration)
+void MinimumJerk::setTargetPos(Vector3d pos_)
 {
-  T = duration;
-  t = 0;
-
-  X_f = target;
-  initConditions.row(3) = X_f;
-
-  // mc_rtc::log::info("Ra = \n{}", Ra);
-  // mc_rtc::log::info("Rb = \n{}", Rb);
-  // mc_rtc::log::info("Initial conditions = \n{}", initConditions);
+  X_f = pos_;
+  u.row(3) = pos_;
+  mc_rtc::log::info("[MinJerk Generator] New target position set : \n{}", u);
 }
 
-Eigen::Vector3d MinimumJerk::get_target_acc(void)
+void MinimumJerk::setDuration(double T)
 {
-  auto target = acc_target_clipped;
-  // std::cout << "==================== Return target acc ====================" << std::endl;
-  // std::cout << fmt::format("Target acceleration = \n{}", target.transpose()) << std::endl;
-  return target;
+  deltaT = T;
 }
 
-void MinimumJerk::set_force_limit(double limit_)
+void MinimumJerk::setVelocityLimit(double limit)
 {
-  acc_lim = limit_ / mass;
+  V_limit = limit;
 }
 
-void MinimumJerk::update(Eigen::Vector3d pos_, Eigen::Vector3d vel_, Eigen::Vector3d acc_, bool discrete)
+void MinimumJerk::update(Vector3d pos_, Vector3d vel_, Vector3d acc_)
 {
-  // std::cout << "==================== Entering update function ====================" << std::endl;
-  pos = pos_;
-  vel = vel_;
-  acc = acc_;
+  X_0 = pos_;
+  V_0 = vel_;
+  A_0 = acc_;
 
-  err = X_f - pos;
+  err = X_f - X_0;
 
-  if(discrete)
+  X_s << X_0.transpose(), V_0.transpose(), A_0.transpose();
+
+  Rn(1, 1) = deltaT;
+  Rn(2, 2) = pow(deltaT, 2);
+
+  poly_coeffs = Ri * Rn * X_s + Ri * u;
+
+  target_acc = decisionTreeControl();
+
+  deltaT -= dt;
+  if(deltaT < dt)
   {
-    discrete_acc();
+    deltaT = dt;
+  }
+}
+
+Vector3d MinimumJerk::decisionTreeControl(void)
+{
+  double proj_acc = A_0.transpose() * err;
+  // if(proj_acc < 0)
+  // {
+  //   return computeTargetAcc();
+  // }
+  // else
+  // {
+  if(V_0.norm() >= V_limit)
+  {
+    mc_rtc::log::warning("[MinimumJerk] Velocity too high during acceleration phase. Acceleration set to zero.");
+    output_source = "VelSupVelLim";
+    return Vector3d::Zero();
   }
   else
   {
-    continuous_acc();
-  }
-}
-
-void MinimumJerk::continuous_acc(void)
-{
-  Eigen::Vector3d reference_acc = continuous_ref_acc();
-  if(acc.transpose() * err < 0.0)
-  {
-    return;
-  }
-  else
-  {
-    if(vel.norm() >= vel_limit)
+    auto V_extremums = velTrajectoryExtremums();
+    // std::vector<double> vec_extremum(V_extremums.begin(), V_extremums.end());
+    // mc_rtc::log::info("Trajectory velocity's extremums : {}", fmt::join(vec_extremum, ", "));
+    if(V_extremums.upper_bound(V_limit) == V_extremums.end())
     {
-      // For now let's not break and just stop accelerating
-      reference_acc = Eigen::Vector3d::Zero();
+      output_source = "VelExtremInBounds";
+      return computeTargetAcc();
     }
     else
     {
-      auto vel_max = compute_vel_max();
-      if(vel_max > vel_limit)
-      {
-        return;
-      }
-      else
-      {
-        // Solve delta T such that vel_max = vel_limit
-      }
+      deltaT = solveNewDeltaT(V_extremums);
+      mc_rtc::log::warning("[MinimumJerk] Computed trajectory for trajectory duration generates velocity out of "
+                           "bounds, computing new trajectory for {}s duration",
+                           deltaT);
+      Rn(1, 1) = deltaT;
+      Rn(2, 2) = pow(deltaT, 2);
+      poly_coeffs = Ri * Rn * X_s + Ri * u;
+      output_source = "NewDelta";
+      return computeTargetAcc();
     }
   }
-
-  acc_target_clipped = reference_acc;
+  // }
 }
 
-Eigen::Vector3d MinimumJerk::continuous_ref_acc(void)
+Vector3d MinimumJerk::computeTargetAcc(void)
 {
-  Eigen::Vector3d reference_acc;
-  // std::cout << fmt::format("Acc = \n{}", acc_) << std::endl;
-  // std::cout << fmt::format("Commanded Acc = \n{}", c_acc_) << std::endl;
+  Rs(0, 4) = 1.0 / deltaT;
+  Rs(1, 3) = 2.0 / pow(deltaT, 2);
+  Rs(2, 2) = 6.0 / pow(deltaT, 3);
 
-  // Define intial pose at the start of trajectory to compute non constrained reference trajectory
-  if(t == 0)
-  {
-    X_0 = pos;
-  }
+  Matrix3d dX_s = Rs * poly_coeffs;
 
-  // Update current state
-  state << pos.transpose(), vel.transpose(), acc.transpose();
-
-  // std::cout << "==================== Updating state variables ====================" << std::endl;
-  // std::cout << fmt::format("Acc = \n{}", acc_.transpose()) << std::endl;
-  // std::cout << fmt::format("Commanded Acc = \n{}", c_acc_.transpose()) << std::endl;
-  // std::cout << fmt::format("State = \n{}", state) << std::endl;
-  // std::cout << fmt::format("State commanded acc = \n{}", state_c_acc) << std::endl;
-
-  // Update Matrices
-  auto deltaT = T - t;
-  RdeltaT(0, 0) = 1 / pow(deltaT, 3);
-  RdeltaT(1, 1) = 1 / pow(deltaT, 4);
-  RdeltaT(2, 2) = 1 / pow(deltaT, 5);
-  Rs(0, 0) = 1;
-  Rs(1, 1) = deltaT;
-  Rs(2, 2) = (deltaT * deltaT);
-  Rb = RdeltaT * Ri;
-  Ra = Rb * Rs;
-
-  // Compute state dot
-  stateDot = Ra * state + Rb * initConditions;
-  // std::cout << "==================== Computing state dot ====================" << std::endl;
-  // std::cout << fmt::format("Acc = \n{}", acc_.transpose()) << std::endl;
-  // std::cout << fmt::format("Commanded Acc = \n{}", c_acc_.transpose()) << std::endl;
-  // std::cout << fmt::format("State = \n{}", state) << std::endl;
-  // std::cout << fmt::format("State commanded acc = \n{}", state_c_acc) << std::endl;
-  // std::cout << fmt::format("State dot = \n{}", stateDot) << std::endl;
-  // std::cout << fmt::format("State dot commanded acc = \n{}", stateDotCAcc) << std::endl;
-
-  // Update target acceleration
-  Eigen::Vector3d jerk = stateDot.row(0);
-  Eigen::Vector3d snap = stateDot.row(1);
-  Eigen::Vector3d crackle = stateDot.row(2);
-  acc_target = acc + jerk * dt + snap * dt * dt / 2.0 + crackle * dt * dt * dt / 6.0;
-  std::cout << "Norm lim = " << acc_lim << std::endl;
-  std::cout << "Norm = " << acc_target.norm() << std::endl;
-  if(acc_lim < acc_target.norm())
-  {
-    acc_target_clipped = acc_target * (acc_lim / acc_target.norm());
-  }
-  else
-  {
-    acc_target_clipped = acc_target;
-  }
-  std::cout << "Clipped norm = " << acc_target_clipped.norm() << std::endl;
-
-  // std::cout << "==================== Computing target acc ====================" << std::endl;
-  // std::cout << fmt::format("Acc = \n{}", acc_.transpose()) << std::endl;
-  // std::cout << fmt::format("Commanded Acc = \n{}", c_acc_.transpose()) << std::endl;
-  // std::cout << fmt::format("State = \n{}", state) << std::endl;
-  // std::cout << fmt::format("State commanded acc = \n{}", state_c_acc) << std::endl;
-  // std::cout << fmt::format("State dot = \n{}", stateDot) << std::endl;
-  // std::cout << fmt::format("State dot commanded acc = \n{}", stateDotCAcc) << std::endl;
-  // std::cout << fmt::format("Jerk = \n{}", jerk.transpose()) << std::endl;
-  // std::cout << fmt::format("Snap = \n{}", snap.transpose()) << std::endl;
-  // std::cout << fmt::format("Crackle = \n{}", crackle.transpose()) << std::endl;
-  // std::cout << fmt::format("Jerk commanded acc = \n{}", jerk_c_acc.transpose()) << std::endl;
-  // std::cout << fmt::format("Snap commanded acc = \n{}", snap_c_acc.transpose()) << std::endl;
-  // std::cout << fmt::format("Crackle commanded acc = \n{}", crackle_c_acc.transpose()) << std::endl;
-  // std::cout << fmt::format("Target acceleration = \n{}", acc_target.transpose()) << std::endl;
-  // std::cout << fmt::format("Target acceleration commanded acc = \n{}", c_acc_target.transpose()) << std::endl;
-
-  ideal_pos = X_0 + (X_f - X_0) * (10 * pow(t / T, 3) - 15 * pow(t / T, 4) + 6 * pow(t / T, 5));
-
-  t += dt;
-  auto th = dt * 20;
-  if(deltaT < th) t = T - th;
-
-  return reference_acc;
+  return A_0 + dt * dX_s.row(2).transpose();
 }
 
-Eigen::Vector3d MinimumJerk::discrete_ref_acc(void)
+Vector3d MinimumJerk::computeVelAtRoot(double t)
 {
-  Eigen::Vector3d reference_acc;
-  auto deltaT = T - t;
-
-  Rs(0, 0) = 1;
-  Rs(1, 1) = deltaT;
-  Rs(2, 2) = (deltaT * deltaT);
-  auto rk = dt / deltaT;
-  RdeltaT_d << 20.0 * pow(rk, 3), 12.0 * pow(rk, 2), 6. * rk, 2., 0., 0.;
-  RdeltaT_d = (1 / pow(deltaT, 2)) * RdeltaT_d;
-
-  Rb_d = RdeltaT_d * Ri_d;
-  Ra_d = Rb_d * Rs;
-
-  state << pos.transpose(), vel.transpose(), acc.transpose();
-
-  acc_target << Ra_d * state + Rb_d * initConditions;
-
-  t += dt;
-  auto th = dt * 10;
-  if(deltaT < th) t = T - th;
-
-  return reference_acc;
+  return (1 / deltaT)
+         * (5 * poly_coeffs.row(0) * pow(t, 4) + 4 * poly_coeffs.row(1) * pow(t, 3) + 3 * poly_coeffs.row(2) * pow(t, 2)
+            + 2 * poly_coeffs.row(3) * t + poly_coeffs.row(4));
 }
 
-Eigen::Vector3d MinimumJerk::compute_vel_max(void)
+Vector3d MinimumJerk::computeJerkAtRoot(double t)
 {
+  return (1 / pow(deltaT, 3))
+         * (60 * poly_coeffs.row(0) * pow(t, 2) + 24 * poly_coeffs.row(1) * t + 6 * poly_coeffs.row(2));
+}
 
-  return;
+SetD MinimumJerk::velTrajectoryExtremums(void)
+{
+  SetD acc_roots = RootFinder::solvePolynomial(poly_coeffs.col(0), 0.0, 1.0, 0.0);
+  SetD vel_at_roots;
+  for(auto it = acc_roots.begin(); it != acc_roots.end(); it++)
+  {
+    vel_at_roots.insert(computeVelAtRoot(*it).norm());
+  }
+
+  return vel_at_roots;
+}
+
+double MinimumJerk::solveNewDeltaT(SetD vel_extremums)
+{
+  double max_delta = -1;
+  for(auto it = vel_extremums.begin(); it != vel_extremums.end(); it++)
+  {
+    auto delta = (deltaT * (*it)) / V_limit;
+    if(delta > max_delta) max_delta = delta;
+  }
+  return max_delta;
 }
 
 void MinimumJerk::add_to_logger(mc_rtc::Logger & logger)
 {
-  logger.addLogEntry("MinimumJerk_deltaT", [this]() { return this->T - this->t; });
-  logger.addLogEntry("MinimumJerk_ideal_pos", [this]() { return this->ideal_pos; });
-  logger.addLogEntry("MinimumJerk_target_pos", [this]() { return this->X_f; });
-  logger.addLogEntry("MinimumJerk_target_acceleration", [this]() { return this->acc_target; });
-  logger.addLogEntry("MinimumJerk_target_acceleration_clipped", [this]() { return this->acc_target_clipped; });
-  logger.addLogEntry("MinimumJerk_target_jerk", [this]() { return (Eigen::Vector3d)this->stateDot.row(0); });
-  logger.addLogEntry("MinimumJerk_target_snap", [this]() { return (Eigen::Vector3d)this->stateDot.row(1); });
-  logger.addLogEntry("MinimumJerk_target_crackle", [this]() { return (Eigen::Vector3d)this->stateDot.row(2); });
-  logger.addLogEntry("MinimumJerk_current_err", [this]() { return this->err; });
-  logger.addLogEntry("MinimumJerk_current_pos", [this]() { return this->pos; });
-  logger.addLogEntry("MinimumJerk_current_vel", [this]() { return this->vel; });
-  logger.addLogEntry("MinimumJerk_current_acc", [this]() { return this->acc; });
-  logger.addLogEntry("MinimumJerk_error_norm", [this]() { return this->eval().norm(); });
+  logger.addLogEntry("MinimumJerk_error", [this]() { return err; });
+  logger.addLogEntry("MinimumJerk_output_source", [this]() { return output_source; });
+  logger.addLogEntry("MinimumJerk_trajectory_time", [this]() { return deltaT; });
+  logger.addLogEntry("MinimumJerk_trajectory_cur_pos", [this]() { return X_0; });
+  logger.addLogEntry("MinimumJerk_trajectory_cur_vel", [this]() { return V_0; });
+  logger.addLogEntry("MinimumJerk_trajectory_cur_acc", [this]() { return A_0; });
+  logger.addLogEntry("MinimumJerk_trajectory_ref_pos", [this]() { return X_f; });
+  logger.addLogEntry("MinimumJerk_trajectory_ref_acc", [this]() { return target_acc; });
 }

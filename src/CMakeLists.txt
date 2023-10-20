@@ -6,6 +6,7 @@ set(controller_SRC
 set(controller_HDR
   UserPreferenceController.h
   MinimumJerk.h
+  ${CMAKE_SOURCE_DIR}/include/root_finder/root_finder.hpp
 )
 
 add_library(${PROJECT_NAME} SHARED ${controller_SRC} ${controller_HDR})

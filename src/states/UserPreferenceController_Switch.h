@@ -14,12 +14,15 @@ struct UserPreferenceController_Switch : mc_control::fsm::State
   void teardown(mc_control::fsm::Controller & ctl) override;
 
 private:
-  MinimumJerk* mj;
+  MinimumJerk * mj;
 
   bool targetIsFirst;
   Eigen::Vector3d first_target;
   Eigen::Vector3d second_target;
   Eigen::Vector3d current_target;
+
+  std::string external_force_body_name;
+  sva::ForceVecd external_force;
 
   Eigen::Vector3d vel;
   Eigen::Vector3d acc_deriv;
@@ -32,5 +35,4 @@ private:
   Eigen::Vector3d eeAccel;
 
   void switch_target(mc_control::fsm::Controller & ctl_);
-
 };

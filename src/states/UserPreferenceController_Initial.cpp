@@ -7,7 +7,7 @@ void UserPreferenceController_Initial::configure(const mc_rtc::Configuration & c
 void UserPreferenceController_Initial::start(mc_control::fsm::Controller & ctl_)
 {
   auto & ctl = static_cast<UserPreferenceController &>(ctl_);
-  ctl.datastore().assign<std::string>("ControlMode","Position");   
+  ctl.datastore().assign<std::string>("ControlMode", "Position");
 }
 
 bool UserPreferenceController_Initial::run(mc_control::fsm::Controller & ctl_)
