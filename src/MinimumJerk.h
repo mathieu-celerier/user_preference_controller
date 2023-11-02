@@ -16,12 +16,14 @@ class MinimumJerk
 private:
   // Control hyper-parameters
   double V_limit; // Maximum linear velocity
-  double J_limit; // Maximum linear velocity
+  double A_limit; // Maximum linear acceleration
+  double J_limit; // Maximum linear jerk
 
   // Control variables
   double dt;
   Vector3d err;
   Vector3d target_acc;
+  Vector3d commanded_jerk;
   std::string output_source;
 
   // Trajectory specific hyper-parameters
@@ -53,6 +55,7 @@ public:
   void setTargetPos(Vector3d pos_);
   void setDuration(double T);
   void setVelocityLimit(double limit);
+  void setAccelerationLimit(double limit);
   void setJerkLimit(double limit);
 
   // Member functions
@@ -60,9 +63,12 @@ public:
   Vector3d decisionTreeControl(void);
   Vector3d computeTargetAcc(void);
   Vector3d computeVelAtRoot(double t);
+  Vector3d computeAccAtRoot(double t);
   Vector3d computeJerkAtRoot(double t);
+  SetD computeRootsOfJerk(double deltaT);
+  SetD solveJerkConstraint(void);
   SetD velTrajectoryExtremums(void);
-  double solveNewDeltaT(SetD vel_extremums);
+  double solveNewDeltaT(void);
 
   void add_to_logger(mc_rtc::Logger & logger);
 };

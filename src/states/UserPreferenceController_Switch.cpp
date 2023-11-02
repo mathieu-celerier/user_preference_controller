@@ -11,6 +11,8 @@ void UserPreferenceController_Switch::start(mc_control::fsm::Controller & ctl_)
 
   mj = new MinimumJerk(ctl.timeStep, robot.mb().bodies()[robot.bodyIndexByName("bracelet_link")].inertia().mass());
   mj->setVelocityLimit(1.0);
+  mj->setAccelerationLimit(200.0);
+  mj->setJerkLimit(40.0);
   first_target = robot.bodyPosW("tool_frame").translation() + Eigen::Vector3d(0.0, 0.3, 0.0);
   second_target = robot.bodyPosW("tool_frame").translation();
   current_target = first_target;
