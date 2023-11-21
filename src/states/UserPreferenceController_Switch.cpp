@@ -10,9 +10,8 @@ void UserPreferenceController_Switch::start(mc_control::fsm::Controller & ctl_)
   auto & robot = ctl.robot("kinova");
 
   mj = new MinimumJerk(ctl.timeStep, robot.mb().bodies()[robot.bodyIndexByName("bracelet_link")].inertia().mass());
-  mj->setVelocityLimit(1.0);
-  mj->setAccelerationLimit(200.0);
-  mj->setJerkLimit(40.0);
+  mj->setAccelerationLimit(50.0);
+  mj->setJerkLimit(10.0);
   first_target = robot.bodyPosW("tool_frame").translation() + Eigen::Vector3d(0.0, 0.3, 0.0);
   second_target = robot.bodyPosW("tool_frame").translation();
   current_target = first_target;
@@ -31,6 +30,8 @@ void UserPreferenceController_Switch::start(mc_control::fsm::Controller & ctl_)
   mj->add_to_logger(ctl.logger());
 
   eeAccel.setZero();
+
+  jac = rbd::Jacobian(robot.mb(), "tool_frame");
 
   ctl.logger().addLogEntry("body6d_kinova_tool_frame_position_curAccel", [this]() { return this->eeAccel; });
   ctl.logger().addLogEntry("commanded_vel", [this]() { return this->commanded_vel; });
@@ -72,6 +73,7 @@ bool UserPreferenceController_Switch::run(mc_control::fsm::Controller & ctl_)
 
   auto & ctl = static_cast<UserPreferenceController &>(ctl_);
   auto & robot = ctl.robot("kinova");
+  auto & tvm_robot = ctl.robot().tvmRobot();
 
   auto bodyName = robot.frame("tool_frame").body();
 
@@ -83,6 +85,8 @@ bool UserPreferenceController_Switch::run(mc_control::fsm::Controller & ctl_)
   Eigen::Vector3d angVel = robot.bodyVelW(bodyName).angular();
   acc = transform.rotation().transpose() * robot.bodyAccB(bodyName).linear() + angVel.cross(vel);
 
+  // acc_dist = Eigen::Vector3d::Zero();
+
   if(external_force_body_name.compare("") != 0)
   {
     const auto & apply_force_fn =
@@ -91,6 +95,9 @@ bool UserPreferenceController_Switch::run(mc_control::fsm::Controller & ctl_)
     apply_force_fn(external_force_body_name, external_force, Eigen::Vector3d::Zero().eval());
   }
 
+  auto j = jac.jacobian(robot.mb(), robot.mbc());
+  auto acc_dist = j * tvm_robot.alphaDDisturbance();
+
   eeAccel = acc;
   // std::cout << "acc" << acc_deriv.transpose() << std::endl;
   // std::cout << "bodyAccW" << acc.transpose() << std::endl;
@@ -98,7 +105,7 @@ bool UserPreferenceController_Switch::run(mc_control::fsm::Controller & ctl_)
   // std::cout << "Axe-Angle " << Eigen::AngleAxisd(transform.rotation().transpose()).axis().transpose() << " " <<
   // Eigen::AngleAxisd(transform.rotation().transpose()).angle() << std::endl;
 
-  mj->update(pos, vel, acc);
+  mj->update(pos, vel, acc, acc_dist.tail(3));
 
   commanded_acc = mj->getTargetAcceleration();
 

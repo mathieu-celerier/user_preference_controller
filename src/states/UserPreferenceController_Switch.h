@@ -1,6 +1,7 @@
 #pragma once
 
 #include <mc_control/fsm/State.h>
+#include <mc_tvm/Robot.h>
 #include "../MinimumJerk.h"
 
 struct UserPreferenceController_Switch : mc_control::fsm::State
@@ -24,9 +25,12 @@ private:
   std::string external_force_body_name;
   sva::ForceVecd external_force;
 
+  rbd::Jacobian jac;
+
   Eigen::Vector3d vel;
   Eigen::Vector3d acc_deriv;
   Eigen::Vector3d acc;
+  Eigen::Vector3d acc_dist;
 
   Eigen::Vector3d commanded_acc;
   Eigen::Vector3d commanded_vel;
