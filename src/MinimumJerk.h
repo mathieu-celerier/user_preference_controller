@@ -24,7 +24,7 @@ private:
   // Control variables
   double dt;
   Vector3d err;
-  Vector3d acc_mj;
+  double acc_mj;
   Vector3d target_acc;
   double commanded_jerk;
   std::string delta_recompute_source;

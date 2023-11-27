@@ -27,7 +27,7 @@ void MinimumJerk::setTargetPos(Vector3d pos_)
 {
   X_f = pos_;
   target_acc.setZero();
-  acc_mj = Vector3d::Zero();
+  acc_mj = 0.0;
   mc_rtc::log::info("[MinJerk Generator] New target position set : \n{}", u);
 }
 
@@ -124,10 +124,15 @@ Vector3d MinimumJerk::computeTargetAcc(bool onlydDamp)
   Vector3d dXs = Rs * poly_coeffs;
 
   commanded_jerk = (onlydDamp) ? 0.0 : dXs[2];
-  acc_mj = acc_mj + dt * commanded_jerk * (err / err.norm());
+  acc_mj = acc_mj + dt * commanded_jerk;
 
-  Vector3d proj_back_jerk_acc = acc_mj;
-  Vector3d damping_acc = -dt * Kd * (vel - V_0 * (err / err.norm()));
+  Vector3d proj_back_jerk_acc = acc_mj * (err / err.norm());
+  // Vector3d damping_acc = -dt * Kd * (vel - V_0 * (err / err.norm()));
+  Vector3d damping_acc = -Kd * (vel - V_0 * (err / err.norm()));
+  // mc_rtc::log::info("Amj = {}", proj_back_jerk_acc.transpose());
+  // mc_rtc::log::info("Vel = {}", vel.transpose());
+  // mc_rtc::log::info("Ortogonal Vel = {}", (vel - V_0 * (err / err.norm())).transpose());
+  // mc_rtc::log::info("Admp = {}", damping_acc.transpose());
 
   return proj_back_jerk_acc + damping_acc;
 }
